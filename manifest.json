@@ -1,0 +1,16 @@
+{
+  "name": "ARIA MAX — Executive AI Command Center",
+  "short_name": "ARIA ∞",
+  "description": "Private, local-first executive AI assistant — real 3D talking avatar, knowledge graph, insights, voice, LAN sync. No cloud.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#04060e",
+  "theme_color": "#04060e",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "192x192", "type": "image/svg+xml" },
+    { "src": "icon.svg", "sizes": "512x512", "type": "image/svg+xml" }
+  ]
+}

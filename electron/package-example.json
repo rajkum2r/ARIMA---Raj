@@ -1,0 +1,19 @@
+{
+  "name": "aria-infinity-desktop",
+  "version": "5.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.rajesh.ariamax",
+    "productName": "ARIA MAX",
+    "files": ["main.js", "../index.html", "../manifest.json", "../icon.svg", "../vendor/**"],
+    "win": { "target": "portable" }
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.0"
+  }
+}

@@ -1,0 +1,7 @@
+ARIA MAX — iPHONE / iPAD INSTALL
+Instant (no tools): serve on your computer ("python serve.py"), open the printed
+address in Safari on the phone -> Share -> Add to Home Screen. Offline app with icon.
+Native IPA (needs a Mac): install Node.js + Xcode, then:
+   npm install
+   npm run ios          (Xcode opens -> run on your device)
+Sync with the laptop via sync-server.py exactly like Android.

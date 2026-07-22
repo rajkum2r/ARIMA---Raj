@@ -1,0 +1,20 @@
+{
+  "name": "aria-max",
+  "version": "6.0.0",
+  "private": true,
+  "description": "ARIA PRO — local-first executive AI command center (web + Capacitor native shell)",
+  "scripts": {
+    "serve": "python serve.py",
+    "sync-server": "python sync-server.py",
+    "android": "npx cap add android && npx cap sync && npx cap open android",
+    "ios": "npx cap add ios && npx cap sync && npx cap open ios",
+    "resync": "npx cap sync"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.2.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}
