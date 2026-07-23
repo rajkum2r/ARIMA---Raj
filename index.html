@@ -284,7 +284,7 @@ body{font-family:'Inter','Segoe UI Variable Display','Segoe UI',system-ui,sans-s
 </style>
 <style>
 /* ULTRA additions */
-#bnav{display:none;position:fixed;left:0;right:0;bottom:0;z-index:34;background:var(--panel2);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+#bnav{display:none;position:fixed;left:0;right:0;bottom:0;z-index:34;background:rgba(10,16,34,.95)!important;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
 #bnav button{flex:1;background:none;border:none;color:var(--dim);font-size:10px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 2px;cursor:pointer;border-radius:10px}
 #bnav button svg{width:21px;height:21px}
 #bnav button.on{color:var(--acc)}
@@ -350,6 +350,64 @@ input[type=range]{accent-color:var(--acc);height:26px}
 .eqRow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
 .kChip{border:1px solid var(--line);border-radius:99px;padding:4px 12px;font-size:12px;cursor:pointer;background:var(--field);color:var(--dim)}
 .kChip.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:var(--onacc)}
+</style>
+
+<style>
+/* Executive Mobile Safe Area & Virtual Keyboard Alignment Fixes */
+.top {
+  padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
+  min-height: calc(54px + env(safe-area-inset-top, 0px)) !important;
+  z-index: 25;
+}
+#view {
+  padding-top: 14px !important;
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
+}
+#view.chatmode {
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: calc(100% - 54px - env(safe-area-inset-top, 0px)) !important;
+}
+.chatBar {
+  position: sticky !important;
+  bottom: 0 !important;
+  background: var(--solid) !important;
+  z-index: 30 !important;
+}
+@media(max-width:860px){
+  #bnav { display: flex !important; background: rgba(10,16,34,0.96) !important; }
+  .chatBar { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+</style>
+
+<style>
+/* Executive Mobile Safe Area & Virtual Keyboard Alignment Fixes */
+.top {
+  padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
+  min-height: calc(54px + env(safe-area-inset-top, 0px)) !important;
+  z-index: 25;
+}
+#view {
+  padding-top: 14px !important;
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
+}
+#view.chatmode {
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: calc(100% - 54px - env(safe-area-inset-top, 0px)) !important;
+}
+.chatBar {
+  position: sticky !important;
+  bottom: 0 !important;
+  background: var(--solid) !important;
+  z-index: 30 !important;
+}
+@media(max-width:860px){
+  #bnav { display: flex !important; background: rgba(10,16,34,0.96) !important; }
+  .chatBar { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important; }
+}
 </style>
 </head>
 <body>
@@ -1567,7 +1625,22 @@ async function sendChat(txt,img){
 
 /* ---------- offline NLU brain ---------- */
 function isoD(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function parseWhen(s){const t=s.toLowerCase();let date=null,time=null;
+function parseWhen(s){const t=String(s||'').toLowerCase();let date=null,time=null;
+  // Relative time: "in 1 min", "in 5 mins", "in 1 hour", "1 min", "1 நிமிடம்"
+  const relM = t.match(/\b(?:in\s+)?(\d+)\s*(min|mins|minute|minutes|hr|hrs|hour|hours|sec|secs|second|seconds|நிமிடம்)\b/i);
+  if(relM){
+    const amount = parseInt(relM[1]);
+    const unit = relM[2].toLowerCase();
+    let ms = amount * 60000;
+    if(unit.startsWith('hr') || unit.startsWith('hour')) ms = amount * 3600000;
+    if(unit.startsWith('sec') || unit.startsWith('second')) ms = amount * 1000;
+    const targetDate = new Date(Date.now() + ms);
+    date = todayStr();
+    const h = String(targetDate.getHours()).padStart(2, '0');
+    const mi = String(targetDate.getMinutes()).padStart(2, '0');
+    time = `${h}:${mi}`;
+    return {date, time};
+  }
   if(/\btoday\b/.test(t))date=todayStr();
   else if(/\btomorrow\b/.test(t))date=isoD(new Date(Date.now()+864e5));
   else if(/\bnext week\b/.test(t))date=isoD(new Date(Date.now()+7*864e5));
@@ -1579,7 +1652,7 @@ function parseWhen(s){const t=s.toLowerCase();let date=null,time=null;
     if(h>=0&&h<24)time=String(h).padStart(2,'0')+':'+String(mi).padStart(2,'0')}
   return{date,time}}
 function parsePri(s){if(/\b(p1|urgent|critical|asap)\b/i.test(s))return 1;if(/\b(p2|important|high)\b/i.test(s))return 2;return 3}
-function cleanTitle(s){return s.replace(/\b(today|tomorrow|next week|p1|p2|p3|urgent|critical|asap|important)\b/gi,'')
+function cleanTitle(s){return s.replace(/\b(in\s+)?\d+\s*(min|mins|minute|minutes|hr|hrs|hour|hours|sec|secs|second|seconds|நிமிடம்)\b/gi,'').replace(/\b(today|tomorrow|next week|p1|p2|p3|urgent|critical|asap|important)\b/gi,'')
   .replace(/\bat\s+\d{1,2}(?:[:.]\d{2})?\s*(am|pm)?\b/gi,'').replace(/\b20\d{2}-\d{2}-\d{2}\b/g,'')
   .replace(/\b(on\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi,'')
   .replace(/\s{2,}/g,' ').replace(/[,:;]\s*$/,'').trim()}
@@ -4715,7 +4788,35 @@ const Exporter={
    d.rows.map(r=>'<tr>'+r.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>').join('')+'</table>';
   (d.blocks||[]).forEach(b=>{h+='<h3>'+esc(b.h)+'</h3><p>'+esc(b.body||'').replace(/\n/g,'<br>')+'</p>'});
   return h},
- wrapHTML(inner){return '<html><head><meta charset="utf-8"><style>body{font-family:Segoe UI,Arial;color:#1c1530;margin:28px}h1{color:#7C3AED;border-bottom:2px solid #EC4899;padding-bottom:6px}h3{color:#6366F1}table{border-collapse:collapse;width:100%}td,th{border:1px solid #c9bfe0;padding:6px 9px;font-size:12px;text-align:left;vertical-align:top}th{background:#efe7fc}</style></head><body>'+inner+'</body></html>'}
+   wrapHTML(inner){return `<html><head><meta charset="utf-8"><style>body{font-family:Segoe UI,Arial;color:#1c1530;margin:28px}h1{color:#7C3AED;border-bottom:2px solid #EC4899;padding-bottom:6px}h3{color:#6366F1}table{border-collapse:collapse;width:100%}td,th{border:1px solid #c9bfe0;padding:6px 9px;font-size:12px;text-align:left;vertical-align:top}th{background:#efe7fc}</style><style>
+/* Executive Mobile Safe Area & Virtual Keyboard Alignment Fixes */
+.top {
+  padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
+  min-height: calc(54px + env(safe-area-inset-top, 0px)) !important;
+  z-index: 25;
+}
+#view {
+  padding-top: 14px !important;
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
+}
+#view.chatmode {
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: calc(100% - 54px - env(safe-area-inset-top, 0px)) !important;
+}
+.chatBar {
+  position: sticky !important;
+  bottom: 0 !important;
+  background: var(--solid) !important;
+  z-index: 30 !important;
+}
+@media(max-width:860px){
+  #bnav { display: flex !important; background: rgba(10,16,34,0.96) !important; }
+  .chatBar { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+</style>
+</head><body>${inner}</body></html>`;}
 };
 </script>
 <script>
@@ -4801,26 +4902,52 @@ window.ExecutiveEngine = {
   }
 };
 
-/* Real-Time Alarm & Notification Scheduler */
+/* Real-Time Alarm & Notification Scheduler (Universal Web Audio + Push + Speech) */
 window.SchedulerEngine = {
   notified: new Set(),
+  playChime(){
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return;
+      const ctx = new AC();
+      const now = ctx.currentTime;
+      [0, 0.22, 0.44, 0.66].forEach(delay => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime( delay % 0.44 === 0 ? 880 : 1046, now + delay);
+        gain.gain.setValueAtTime(0.35, now + delay);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + delay);
+        osc.stop(now + delay + 0.18);
+      });
+    } catch(e){}
+  },
   async check(){
     try {
+      if(!DB || !DB.db) return;
       const now = new Date();
       const td = todayStr();
-      const curTime = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+      const h = String(now.getHours()).padStart(2,'0');
+      const mi = String(now.getMinutes()).padStart(2,'0');
+      const curTime = `${h}:${mi}`;
       
-      // 1. Tasks due now
+      // 1. Tasks due today at or before current time
       const tasks = await DB.all('tasks');
-      tasks.filter(t => !t.done && t.due === td && t.time === curTime).forEach(t => this.trigger(t.id, 'Task Due: ' + t.title, 'Scheduled task is due now!'));
+      tasks.filter(t => !t.done && t.due === td && t.time && t.time <= curTime).forEach(t => this.trigger(t.id, 'Task Due: ' + t.title, 'Scheduled task is due!'));
       
-      // 2. Events starting now
+      // 2. Events & Reminders in 'events' store
       const events = await DB.all('events');
-      events.filter(e => e.date === td && e.time === curTime).forEach(e => this.trigger(e.id, 'Meeting: ' + e.title, 'Meeting starting at ' + curTime));
+      events.filter(e => !e.done && e.date === td && e.time && e.time <= curTime).forEach(e => {
+        const isRem = e.kind === 'reminder' || e.kind === 'alarm';
+        this.trigger(e.id, (isRem ? '⏰ Reminder: ' : '📅 Meeting: ') + e.title, (isRem ? 'Executive Reminder Alert' : 'Meeting starting at ') + e.time);
+      });
       
-      // 3. Reminders
+      // 3. Reminders store
       const reminders = await DB.all('reminders');
-      reminders.filter(r => !r.done && r.date === td && r.time === curTime).forEach(r => this.trigger(r.id, 'Reminder: ' + (r.text||r.title), 'Executive Reminder Alert'));
+      reminders.filter(r => !r.done && r.date === td && r.time && r.time <= curTime).forEach(r => this.trigger(r.id, '⏰ Reminder: ' + (r.text||r.title), 'Executive Reminder Alert'));
     } catch(e){}
   },
   trigger(id, title, body){
@@ -4828,6 +4955,7 @@ window.SchedulerEngine = {
     if(this.notified.has(key)) return;
     this.notified.add(key);
     
+    this.playChime();
     if(typeof playSound === 'function') playSound('alert');
     if(typeof speak === 'function') speak(title);
     
@@ -4837,9 +4965,12 @@ window.SchedulerEngine = {
       try{ Notification.requestPermission(); }catch(x){}
     }
     
+    // Check if banner already exists
+    if(document.getElementById(`almBanner_${id}`)) return;
     const banner = document.createElement('div');
+    banner.id = `almBanner_${id}`;
     banner.className = 'vBanner';
-    banner.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:999;background:var(--solid);border:2px solid var(--acc);border-radius:18px;padding:14px 20px;box-shadow:0 10px 40px -10px var(--acc);display:flex;flex-direction:column;gap:8px;max-width:90vw;width:420px;';
+    banner.style.cssText = 'position:fixed;top:max(20px, env(safe-area-inset-top, 20px));left:50%;transform:translateX(-50%);z-index:9999;background:var(--solid);border:2px solid var(--acc);border-radius:18px;padding:14px 20px;box-shadow:0 10px 40px -10px var(--acc);display:flex;flex-direction:column;gap:8px;max-width:92vw;width:420px;';
     banner.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between">
         <b style="color:var(--acc);font-size:15px">🔔 ${esc(title)}</b>
@@ -4858,6 +4989,8 @@ window.SchedulerEngine = {
       try {
         const t = await DB.get('tasks', id);
         if(t){ t.done = true; await DB.put('tasks', t); }
+        const ev = await DB.get('events', id);
+        if(ev){ ev.done = true; await DB.put('events', ev); }
         const r = await DB.get('reminders', id);
         if(r){ r.done = true; await DB.put('reminders', r); }
         if(typeof go === 'function' && typeof CUR !== 'undefined') go(CUR);
