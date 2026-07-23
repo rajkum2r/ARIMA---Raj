@@ -575,7 +575,7 @@ function exportBtn(sec){return `<button class="btn sm" data-exp="${sec}">📥 Ex
 window.exportBtn = exportBtn;
 
 /* ---------- IndexedDB (records carry .up for LAN sync merge) ---------- */
-const STORES=['tasks','notes','events','meetings','projects','ideas','contacts','chat','kv','files','media','family','health','gnodes','goals','money','journal'];
+const STORES=['tasks','notes','events','meetings','projects','ideas','contacts','chat','kv','files','media','family','health','gnodes','goals','money','journal','photos'];
 const DB={db:null,
   open(){return new Promise((res,rej)=>{const r=indexedDB.open('aria-max-db',1);
     r.onupgradeneeded=e=>{const d=e.target.result;STORES.forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id'})})};
@@ -1002,7 +1002,7 @@ function initQE(){
 <script>
 'use strict';
 /* ================= Navigation ================= */
-const NAMES={dash:'Dashboard',chat:'Assistant',ins:'Insights',tasks:'Tasks',cal:'Calendar',meet:'Meetings',proj:'R&D Projects',ideas:'Ideas Vault',notes:'Notes',people:'People',set:'Settings',search:'Search'};
+const NAMES={gallery:'Photo Gallery',dash:'Dashboard',chat:'Assistant',ins:'Insights',tasks:'Tasks',cal:'Calendar',meet:'Meetings',proj:'R&D Projects',ideas:'Ideas Vault',notes:'Notes',people:'People',set:'Settings',search:'Search'};
 let CUR='dash';
 async function go(v){CUR=v;
   $$('.nv').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
@@ -2527,6 +2527,7 @@ window.go = async function(v){
     health: typeof renderHealth === 'function' ? renderHealth : null,
     files: typeof renderFiles === 'function' ? renderFiles : null,
     media: typeof renderMedia === 'function' ? renderMedia : null,
+    gallery: typeof renderGallery === 'function' ? renderGallery : null,
     rec: typeof renderRec === 'function' ? renderRec : null,
     keeps: typeof renderKeeps === 'function' ? renderKeeps : null,
     goals: typeof renderGoals === 'function' ? renderGoals : null,
@@ -3601,12 +3602,104 @@ const MEDIA={list:[],idx:-1,audio:new Audio(),shuffle:false,
 MEDIA.audio.addEventListener('ended',()=>MEDIA.next());
 MEDIA.audio.addEventListener('play',()=>MEDIA.pill());
 MEDIA.audio.addEventListener('pause',()=>MEDIA.pill());
+
+/* ================= EXECUTIVE PHOTO GALLERY & VAULT ================= */
+async function renderGallery(){
+  const photos = (await DB.all('photos')).sort((a,b) => b.created - a.created);
+  const curCat = window.__galCat || 'All';
+  const filtered = curCat === 'All' ? photos : photos.filter(p => p.cat === curCat);
+  const cats = ['All', '📷 Camera', '👨‍👩‍👧 Family', '🏢 Work', '🧾 Receipts', '🔒 Private'];
+  
+  $('#view').innerHTML = `
+  <div class="filterRow">
+    <button class="btn pri sm" id="pAdd">＋ Upload Photos</button>
+    <button class="btn sm" id="pSnap">📷 Snap Camera</button>
+    <input type="file" id="pIn" multiple accept="image/*,.heic,.jpg,.jpeg,.png,.webp,.gif" class="hide">
+  </div>
+  <div class="chips" style="margin-bottom:12px">
+    ${cats.map(c => `<button class="chip ${curCat===c?'on':''}" data-gcat="${esc(c)}">${esc(c)}</button>`).join('')}
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));gap:12px">
+    ${filtered.length ? filtered.map(p => `
+      <div class="card" style="padding:6px;cursor:pointer;position:relative" data-pview="${p.id}">
+        <div style="width:100%;height:110px;border-radius:10px;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center">
+          <img src="${p.url||p.dataUrl}" style="width:100%;height:100%;object-fit:cover" alt="${esc(p.name)}">
+        </div>
+        <div style="font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</div>
+        <small class="dim" style="font-size:9.5px">${fmtSize(p.size||0)}</small>
+      </div>
+    `).join('') : '<div class="empty" style="grid-column:1/-1"><span class="big">🖼️</span>No photos in gallery yet. Upload or snap camera photos above!</div>'}
+  </div>`;
+  
+  $('#pAdd').onclick = () => $('#pIn').click();
+  $('#pSnap').onclick = () => {
+    CAM.cb = async (blob) => {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        await DB.put('photos', { id: uid(), name: 'Snap_' + todayStr() + '_' + Date.now().toString(36), type: 'image/jpeg', size: blob.size, dataUrl: e.target.result, cat: '📷 Camera', created: Date.now() });
+        toast('📷 Photo snapped to gallery!');
+        renderGallery();
+      };
+      reader.readAsDataURL(blob);
+    };
+    openCamModal();
+  };
+  
+  $('#pIn').onchange = async (e) => {
+    let n = 0;
+    for(const f of e.target.files){
+      if(f.size > 25 * 1048576){ toast('⚠ ' + f.name + ' skipped (>25 MB)'); continue; }
+      const reader = new FileReader();
+      await new Promise(res => {
+        reader.onload = async (ev) => {
+          await DB.put('photos', { id: uid(), name: f.name.replace(/\.[^.]+$/, ''), type: f.type, size: f.size, dataUrl: ev.target.result, cat: 'All', created: Date.now() });
+          n++; res();
+        };
+        reader.readAsDataURL(f);
+      });
+    }
+    e.target.value = '';
+    toast('🖼️ Added ' + plur(n, 'photo'));
+    renderGallery();
+  };
+  
+  $$('[data-gcat]').forEach(b => b.onclick = () => {
+    window.__galCat = b.dataset.gcat;
+    renderGallery();
+  });
+  
+  $$('[data-pview]').forEach(c => c.onclick = async () => {
+    const photo = await DB.get('photos', c.dataset.pview);
+    if(!photo) return;
+    openModal(`
+      <div style="text-align:center">
+        <h3 style="margin-bottom:8px">${esc(photo.name)}</h3>
+        <div style="max-height:65vh;overflow:hidden;border-radius:12px;margin-bottom:12px;background:#000;display:flex;align-items:center;justify-content:center">
+          <img src="${photo.url||photo.dataUrl}" style="max-width:100%;max-height:65vh;object-fit:contain" id="lightboxImg">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <a class="btn sm pri" href="${photo.url||photo.dataUrl}" download="${esc(photo.name)}.jpg">📥 Download</a>
+          <button class="btn sm danger" id="delPhotoBtn">🗑 Delete</button>
+          <button class="btn sm ghost" onclick="closeModal()">Close</button>
+        </div>
+      </div>
+    `);
+    const delBtn = document.getElementById('delPhotoBtn');
+    if(delBtn) delBtn.onclick = async () => {
+      await DB.del('photos', photo.id);
+      closeModal();
+      toast('Photo deleted');
+      renderGallery();
+    };
+  });
+}
+
 async function renderMedia(){await MEDIA.load();
   const list=MEDIA.list;
   $('#view').innerHTML=`
   <div class="filterRow">
     <button class="btn pri sm" id="mAdd">＋ Add songs / videos</button>
-    <input type="file" id="mIn" multiple accept="audio/*,video/*" class="hide">
+    <input type="file" id="mIn" multiple accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.mp4,.mov,.mkv,audio/mp3,audio/mpeg" class="hide">
     <button class="btn sm" id="mShuf" style="margin-left:auto">${MEDIA.shuffle?'🔀 shuffle on':'➡️ in order'}</button>
   </div>
   <p class="dim" style="font-size:12px;margin-bottom:10px">🎧 Voice control from anywhere: “play”, “play [name]”, “pause”, “next”, “previous”, “stop music”. Everything plays offline from this device. To get songs: download from your legal source, then add here (online catalogs: <a href="https://www.youtube.com" target="_blank" style="color:var(--acc)">YouTube</a> · <a href="https://open.spotify.com" target="_blank" style="color:var(--acc)">Spotify</a>).</p>
@@ -4000,6 +4093,7 @@ window.go = async function(v){
     health: typeof renderHealth === 'function' ? renderHealth : null,
     files: typeof renderFiles === 'function' ? renderFiles : null,
     media: typeof renderMedia === 'function' ? renderMedia : null,
+    gallery: typeof renderGallery === 'function' ? renderGallery : null,
     rec: typeof renderRec === 'function' ? renderRec : null,
     keeps: typeof renderKeeps === 'function' ? renderKeeps : null,
     goals: typeof renderGoals === 'function' ? renderGoals : null,
@@ -5215,6 +5309,7 @@ window.go = async function(v){
     health: typeof renderHealth === 'function' ? renderHealth : null,
     files: typeof renderFiles === 'function' ? renderFiles : null,
     media: typeof renderMedia === 'function' ? renderMedia : null,
+    gallery: typeof renderGallery === 'function' ? renderGallery : null,
     rec: typeof renderRec === 'function' ? renderRec : null,
     keeps: typeof renderKeeps === 'function' ? renderKeeps : null,
     goals: typeof renderGoals === 'function' ? renderGoals : null,
@@ -6197,6 +6292,7 @@ window.go = async function(v){
     health: typeof renderHealth === 'function' ? renderHealth : null,
     files: typeof renderFiles === 'function' ? renderFiles : null,
     media: typeof renderMedia === 'function' ? renderMedia : null,
+    gallery: typeof renderGallery === 'function' ? renderGallery : null,
     rec: typeof renderRec === 'function' ? renderRec : null,
     keeps: typeof renderKeeps === 'function' ? renderKeeps : null,
     goals: typeof renderGoals === 'function' ? renderGoals : null,
