@@ -40,3 +40,29 @@ self.addEventListener('fetch', e => {
     )
   );
 });
+
+/* Background Notification Scheduler for PWA & iOS */
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      if (clientList.length > 0) return clientList[0].focus();
+      return clients.openWindow('./index.html');
+    })
+  );
+});
+
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SCHEDULE_NOTIFICATION') {
+    const { title, body, delayMs, id } = e.data;
+    setTimeout(() => {
+      self.registration.showNotification(title, {
+        body,
+        icon: './icon.svg',
+        tag: id,
+        renotify: true,
+        vibrate: [200, 100, 200, 100, 400]
+      });
+    }, Math.max(0, delayMs));
+  }
+});

@@ -1828,9 +1828,25 @@ function attachMic(input,btn){if(!btn)return;
     r.onend=()=>{btn.classList.remove('rec');REC=null};
     r.onerror=()=>{btn.classList.remove('rec');REC=null};
     try{r.start();toast('🎙 Listening…')}catch(e){btn.classList.remove('rec');REC=null;toast('Mic unavailable')}}}
-function speak(t){try{speechSynthesis.cancel();
-  const clean=String(t).replace(/[*_#`>|]/g,'').replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{27BF}\u{FE0F}]/gu,'').replace(/\s+/g,' ').slice(0,600);
-  const u=new SpeechSynthesisUtterance(clean);u.lang=SET.lang||'en-US';u.rate=1.02;speechSynthesis.speak(u)}catch(e){}}
+function speak(t){
+  try {
+    if(!('speechSynthesis' in window)) return;
+    if(speechSynthesis.paused) speechSynthesis.resume();
+    speechSynthesis.cancel();
+    const clean = String(t).replace(/[*_#`>|]/g,'').replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{27BF}\u{FE0F}]/gu,'').replace(/\s+/g,' ').slice(0,600);
+    if(!clean.trim()) return;
+    const u = new SpeechSynthesisUtterance(clean);
+    const targetLang = (typeof SET !== 'undefined' && SET.replyLang) ? SET.replyLang : ((typeof SET !== 'undefined' && SET.lang) ? SET.lang : 'en-US');
+    u.lang = targetLang === 'ta' ? 'ta-IN' : (targetLang === 'zh-TW' ? 'zh-TW' : 'en-US');
+    u.rate = 1.0; u.pitch = 1.0; u.volume = 1.0;
+    const voices = speechSynthesis.getVoices();
+    if(voices.length > 0){
+      const matchVoice = voices.find(v => v.lang && v.lang.toLowerCase().replace('_','-').startsWith(u.lang.toLowerCase()));
+      if(matchVoice) u.voice = matchVoice;
+    }
+    speechSynthesis.speak(u);
+  } catch(e){}
+}
 
 /* ---------- camera capture ---------- */
 const CAM={stream:null,face:'user',cb:null};
@@ -4788,35 +4804,7 @@ const Exporter={
    d.rows.map(r=>'<tr>'+r.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>').join('')+'</table>';
   (d.blocks||[]).forEach(b=>{h+='<h3>'+esc(b.h)+'</h3><p>'+esc(b.body||'').replace(/\n/g,'<br>')+'</p>'});
   return h},
-   wrapHTML(inner){return `<html><head><meta charset="utf-8"><style>body{font-family:Segoe UI,Arial;color:#1c1530;margin:28px}h1{color:#7C3AED;border-bottom:2px solid #EC4899;padding-bottom:6px}h3{color:#6366F1}table{border-collapse:collapse;width:100%}td,th{border:1px solid #c9bfe0;padding:6px 9px;font-size:12px;text-align:left;vertical-align:top}th{background:#efe7fc}</style><style>
-/* Executive Mobile Safe Area & Virtual Keyboard Alignment Fixes */
-.top {
-  padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
-  min-height: calc(54px + env(safe-area-inset-top, 0px)) !important;
-  z-index: 25;
-}
-#view {
-  padding-top: 14px !important;
-  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
-}
-#view.chatmode {
-  padding: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  height: calc(100% - 54px - env(safe-area-inset-top, 0px)) !important;
-}
-.chatBar {
-  position: sticky !important;
-  bottom: 0 !important;
-  background: var(--solid) !important;
-  z-index: 30 !important;
-}
-@media(max-width:860px){
-  #bnav { display: flex !important; background: rgba(10,16,34,0.96) !important; }
-  .chatBar { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important; }
-}
-</style>
-</head><body>${inner}</body></html>`;}
+     wrapHTML(inner){return `<html><head><meta charset="utf-8"><style>body{font-family:Segoe UI,Arial;color:#1c1530;margin:28px}h1{color:#7C3AED;border-bottom:2px solid #EC4899;padding-bottom:6px}h3{color:#6366F1}table{border-collapse:collapse;width:100%}td,th{border:1px solid #c9bfe0;padding:6px 9px;font-size:12px;text-align:left;vertical-align:top}th{background:#efe7fc}</style></head><body>${inner}</body></html>`;}
 };
 </script>
 <script>
@@ -5082,6 +5070,37 @@ setInterval(() => SchedulerEngine.check(), 2500);
   }, 1000);
 })();
 </script>
+
+<script>
+/* Universal iOS & Mobile Web Audio, Speech & Notification Unlocker */
+(function setupIOSUnlock(){
+  let unlocked = false;
+  function unlock(){
+    if(unlocked) return;
+    unlocked = true;
+    try {
+      if(window.AudioContext || window.webkitAudioContext){
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        ac.resume();
+      }
+      if('speechSynthesis' in window){
+        speechSynthesis.resume();
+        const silent = new SpeechSynthesisUtterance('');
+        silent.volume = 0;
+        speechSynthesis.speak(silent);
+        speechSynthesis.getVoices();
+      }
+      if('Notification' in window && Notification.permission === 'default'){
+        Notification.requestPermission();
+      }
+    } catch(e){}
+  }
+  window.addEventListener('pointerdown', unlock, { once: true });
+  window.addEventListener('touchstart', unlock, { once: true });
+  window.addEventListener('click', unlock, { once: true });
+})();
+</script>
+
 </body>
 </html>'},
  doc(d){this.dl(new Blob([this.wrapHTML(this.tableHTML(d))],{type:'application/msword'}),this.fname(d,'doc'))},
@@ -6223,6 +6242,37 @@ go = window.go;
     </div>`)}})();
 </script>
 
+
+
+<script>
+/* Universal iOS & Mobile Web Audio, Speech & Notification Unlocker */
+(function setupIOSUnlock(){
+  let unlocked = false;
+  function unlock(){
+    if(unlocked) return;
+    unlocked = true;
+    try {
+      if(window.AudioContext || window.webkitAudioContext){
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        ac.resume();
+      }
+      if('speechSynthesis' in window){
+        speechSynthesis.resume();
+        const silent = new SpeechSynthesisUtterance('');
+        silent.volume = 0;
+        speechSynthesis.speak(silent);
+        speechSynthesis.getVoices();
+      }
+      if('Notification' in window && Notification.permission === 'default'){
+        Notification.requestPermission();
+      }
+    } catch(e){}
+  }
+  window.addEventListener('pointerdown', unlock, { once: true });
+  window.addEventListener('touchstart', unlock, { once: true });
+  window.addEventListener('click', unlock, { once: true });
+})();
+</script>
 
 </body>
 
