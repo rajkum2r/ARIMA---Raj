@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#04060e">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -513,6 +513,8 @@ function openModal(html){$('#mbox').innerHTML=html;$('#modal').classList.remove(
 function closeModal(){$('#modal').classList.add('hide');$('#mbox').innerHTML=''}
 document.addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
 function mdLite(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')}
+function exportBtn(sec){return `<button class="btn sm" data-exp="${sec}">📥 Export / Share</button>`;}
+window.exportBtn = exportBtn;
 
 /* ---------- IndexedDB (records carry .up for LAN sync merge) ---------- */
 const STORES=['tasks','notes','events','meetings','projects','ideas','contacts','chat','kv','files','media','family','health','gnodes','goals','money','journal'];
@@ -2404,17 +2406,59 @@ async function renderGraph(){
 }
 /* navigation override to include Knowledge view + graph cleanup */
 NAMES.graph='Knowledge';
-go=async function(v){if(CUR==='graph'&&v!=='graph')Graph3D.close();
-  CUR=v;
-  $$('.nv').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  $('#crumb').textContent=NAMES[v]||v;
-  $('#sidebar').classList.remove('open');
-  $('#view').classList.toggle('chatmode',v==='chat');
-  const fn={dash:renderDash,chat:renderChat,ins:renderInsights,graph:renderGraph,tasks:renderTasks,cal:renderCal,meet:renderMeet,proj:renderProj,ideas:renderIdeas,notes:renderNotes,people:renderPeople,set:renderSettings}[v];
-  if(fn)await fn();
-  $('#view').scrollTop=0;
-  if(v!=='search')DB.put('kv',{id:'lastView',v}).catch(()=>{});
+window.go = async function(v){
+  if(typeof CUR !== 'undefined' && CUR === 'graph' && v !== 'graph' && typeof Graph3D !== 'undefined'){
+    try{ Graph3D.close(); }catch(e){}
+  }
+  CUR = v;
+  if(typeof $$ === 'function'){
+    $$('.nv').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    $$('#bnav button').forEach(b => { if(b.dataset.v) b.classList.toggle('on', b.dataset.v === v); });
+  }
+  const crumbEl = document.getElementById('crumb');
+  if(crumbEl && typeof NAMES !== 'undefined') crumbEl.textContent = NAMES[v] || v;
+  const sidebar = document.getElementById('sidebar');
+  if(sidebar) sidebar.classList.remove('open');
+  const viewEl = document.getElementById('view');
+  if(viewEl) viewEl.classList.toggle('chatmode', v === 'chat');
+  
+  const fnMap = {
+    dash: typeof renderDash === 'function' ? renderDash : null,
+    chat: typeof renderChat === 'function' ? renderChat : null,
+    ins: typeof renderInsights === 'function' ? renderInsights : null,
+    graph: typeof renderGraph === 'function' ? renderGraph : null,
+    tasks: typeof renderTasks === 'function' ? renderTasks : null,
+    cal: typeof renderCal === 'function' ? renderCal : null,
+    meet: typeof renderMeet === 'function' ? renderMeet : null,
+    proj: typeof renderProj === 'function' ? renderProj : null,
+    ideas: typeof renderIdeas === 'function' ? renderIdeas : null,
+    notes: typeof renderNotes === 'function' ? renderNotes : null,
+    people: typeof renderPeople === 'function' ? renderPeople : null,
+    family: typeof renderFamily === 'function' ? renderFamily : null,
+    health: typeof renderHealth === 'function' ? renderHealth : null,
+    files: typeof renderFiles === 'function' ? renderFiles : null,
+    media: typeof renderMedia === 'function' ? renderMedia : null,
+    rec: typeof renderRec === 'function' ? renderRec : null,
+    keeps: typeof renderKeeps === 'function' ? renderKeeps : null,
+    goals: typeof renderGoals === 'function' ? renderGoals : null,
+    money: typeof renderMoney === 'function' ? renderMoney : null,
+    journal: typeof renderJournal === 'function' ? renderJournal : null,
+    set: typeof renderSettings === 'function' ? renderSettings : null
+  };
+  
+  const targetFn = fnMap[v] || (typeof window['render' + v.charAt(0).toUpperCase() + v.slice(1)] === 'function' ? window['render' + v.charAt(0).toUpperCase() + v.slice(1)] : null);
+  if(targetFn){
+    await targetFn();
+  } else {
+    console.warn('No render function found for view:', v);
+  }
+  if(viewEl) viewEl.scrollTop = 0;
+  if(typeof MEDIA !== 'undefined' && MEDIA.pill) MEDIA.pill();
+  if(v !== 'search' && typeof DB !== 'undefined' && DB.put){
+    DB.put('kv', { id: 'lastView', v }).catch(() => {});
+  }
 };
+go = window.go;
 </script>
 <script>
 'use strict';
@@ -2570,27 +2614,17 @@ VoiceMode.cloudListen=async function(){if(!this.on||this.busy)return;
     if(!t){this.busy=false;return setTimeout(()=>this.cloudListen(),300)}
     this.handle(t)}
   catch(e){this.status('❌ '+(e.message||e));this.busy=false}};
-VoiceMode.bindHold=function(){const b=$('#vmHold');if(!b)return;let rec=null,sr=null,srText='';
+VoiceMode.bindHold=function(){const b=$('#vmHold');if(!b)return;let rec=null;
   const start=async e=>{e.preventDefault();
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!sttEngine()&&!SR)
-      return toast('Speech recognition unsupported — add a free Groq/Gemini key in Settings');
+    if(!sttEngine()&&!(window.SpeechRecognition||window.webkitSpeechRecognition))
+      return toast('Add a free Groq/Gemini key in Settings to enable hold-to-talk');
+    if(!sttEngine())return toast('Hold-to-talk uses cloud transcription — add a free Groq/Gemini key in Settings');
     if(!await Mic.ensure())return toast('🎙 Allow the microphone first');
     b.classList.add('on');this.busy=true;this.status('🎙 Recording — release to send');
     try{if(this.rec)this.rec.stop()}catch(x){}
-    if(sttEngine()){rec=recordAudio({maxMs:30000})}
-    else if(SR){
-      srText='';const r=new SR();sr=r;r.lang=SET.lang||'en-US';r.interimResults=true;r.continuous=true;
-      r.onresult=ev=>{let s='';for(let i=0;i<ev.results.length;i++)s+=ev.results[i][0].transcript;
-        srText=s;$('#vmText').textContent=s};
-      try{r.start()}catch(x){}
-    }
-  };
-  const stop=async e=>{e.preventDefault();b.classList.remove('on');Mic.recStop&&Mic.recStop();
-    if(sr){try{sr.stop()}catch(x){}sr=null;
-      if(srText.trim()){this.handle(srText.trim())}else{this.busy=false;this.listen()}
-      return}
-    if(!rec)return;
+    rec=recordAudio({maxMs:30000})};
+  const stop=async e=>{e.preventDefault();if(!rec)return;
+    b.classList.remove('on');Mic.recStop&&Mic.recStop();
     try{const blob=await rec;rec=null;
       if(blob.size<2500){this.busy=false;this.status('Heard nothing');return this.listen()}
       this.status('📝 Transcribing…');const t=await transcribe(blob);
@@ -2895,13 +2929,12 @@ renderSettings=async function(){await _rs();
       if(r&&r.outcome==='accepted')toast('📲 Installed!');window.__bip=null}
     else toast('Use the browser menu: ⋮ → Install app (or Share → Add to Home Screen on iPhone)')};
   $('#s_qrGen').onclick=async()=>{const wrap=$('#s_qrWrap');wrap.classList.remove('hide');
-    let ip='192.168.10.12',proto=location.protocol.startsWith('https')?'https:':'https:';
-    try{const r=await fetch('/myip');if(r.ok){const j=await r.json();if(j.ip&&j.ip!=='localhost')ip=j.ip}}catch(e){}
-    const port=location.port||'8323';
-    const url=proto+'//'+ip+':'+port+'/';
+    let url=location.href;
+    try{const r=await fetch('/myip');if(r.ok){const j=await r.json();
+      url='http://'+j.ip+':'+(location.port||80)+'/'}}catch(e){}
     $('#qrBox').innerHTML='';
     if(window.QRCode){new QRCode($('#qrBox'),{text:url,width:170,height:170,colorDark:'#000',colorLight:'#fff'});
-      $('#s_qrHint').innerHTML='<b>'+url+'</b> — scan with your iPhone camera (same Wi-Fi).'}
+      $('#s_qrHint').textContent=url+(url.includes('localhost')?' — run "python serve.py" instead of opening the file directly, so the phone can reach this PC over Wi-Fi.':' — scan with your phone (same Wi-Fi).')}
     else $('#s_qrHint').textContent=url};
 };
 
@@ -3846,20 +3879,59 @@ renderSearch=async function(q){
 
 /* ---- navigation (full map) + mobile bottom bar ---- */
 NAMES.files='Files Vault';NAMES.media='Studio';NAMES.family='Family';NAMES.graph='Knowledge';
-go=async function(v){if(CUR==='graph'&&v!=='graph')Graph3D.close();
-  CUR=v;
-  $$('.nv').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  $('#crumb').textContent=NAMES[v]||v;
-  $('#sidebar').classList.remove('open');
-  $('#view').classList.toggle('chatmode',v==='chat');
-  const fn={dash:renderDash,chat:renderChat,ins:renderInsights,graph:renderGraph,tasks:renderTasks,cal:renderCal,
-    meet:renderMeet,proj:renderProj,ideas:renderIdeas,notes:renderNotes,people:renderPeople,
-    family:renderFamily,files:renderFiles,media:renderMedia,set:renderSettings}[v];
-  if(fn)await fn();
-  $('#view').scrollTop=0;MEDIA.pill();
-  $$('#bnav button').forEach(b=>{
-    if(b.dataset.v)b.classList.toggle('on',b.dataset.v===v)});
-  if(v!=='search')DB.put('kv',{id:'lastView',v}).catch(()=>{})};
+window.go = async function(v){
+  if(typeof CUR !== 'undefined' && CUR === 'graph' && v !== 'graph' && typeof Graph3D !== 'undefined'){
+    try{ Graph3D.close(); }catch(e){}
+  }
+  CUR = v;
+  if(typeof $$ === 'function'){
+    $$('.nv').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    $$('#bnav button').forEach(b => { if(b.dataset.v) b.classList.toggle('on', b.dataset.v === v); });
+  }
+  const crumbEl = document.getElementById('crumb');
+  if(crumbEl && typeof NAMES !== 'undefined') crumbEl.textContent = NAMES[v] || v;
+  const sidebar = document.getElementById('sidebar');
+  if(sidebar) sidebar.classList.remove('open');
+  const viewEl = document.getElementById('view');
+  if(viewEl) viewEl.classList.toggle('chatmode', v === 'chat');
+  
+  const fnMap = {
+    dash: typeof renderDash === 'function' ? renderDash : null,
+    chat: typeof renderChat === 'function' ? renderChat : null,
+    ins: typeof renderInsights === 'function' ? renderInsights : null,
+    graph: typeof renderGraph === 'function' ? renderGraph : null,
+    tasks: typeof renderTasks === 'function' ? renderTasks : null,
+    cal: typeof renderCal === 'function' ? renderCal : null,
+    meet: typeof renderMeet === 'function' ? renderMeet : null,
+    proj: typeof renderProj === 'function' ? renderProj : null,
+    ideas: typeof renderIdeas === 'function' ? renderIdeas : null,
+    notes: typeof renderNotes === 'function' ? renderNotes : null,
+    people: typeof renderPeople === 'function' ? renderPeople : null,
+    family: typeof renderFamily === 'function' ? renderFamily : null,
+    health: typeof renderHealth === 'function' ? renderHealth : null,
+    files: typeof renderFiles === 'function' ? renderFiles : null,
+    media: typeof renderMedia === 'function' ? renderMedia : null,
+    rec: typeof renderRec === 'function' ? renderRec : null,
+    keeps: typeof renderKeeps === 'function' ? renderKeeps : null,
+    goals: typeof renderGoals === 'function' ? renderGoals : null,
+    money: typeof renderMoney === 'function' ? renderMoney : null,
+    journal: typeof renderJournal === 'function' ? renderJournal : null,
+    set: typeof renderSettings === 'function' ? renderSettings : null
+  };
+  
+  const targetFn = fnMap[v] || (typeof window['render' + v.charAt(0).toUpperCase() + v.slice(1)] === 'function' ? window['render' + v.charAt(0).toUpperCase() + v.slice(1)] : null);
+  if(targetFn){
+    await targetFn();
+  } else {
+    console.warn('No render function found for view:', v);
+  }
+  if(viewEl) viewEl.scrollTop = 0;
+  if(typeof MEDIA !== 'undefined' && MEDIA.pill) MEDIA.pill();
+  if(v !== 'search' && typeof DB !== 'undefined' && DB.put){
+    DB.put('kv', { id: 'lastView', v }).catch(() => {});
+  }
+};
+go = window.go;
 function buildBnav(){if(document.getElementById('bnav'))return;
   const bn=document.createElement('div');bn.id='bnav';
   const ic={dash:'<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
@@ -4643,7 +4715,242 @@ const Exporter={
    d.rows.map(r=>'<tr>'+r.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>').join('')+'</table>';
   (d.blocks||[]).forEach(b=>{h+='<h3>'+esc(b.h)+'</h3><p>'+esc(b.body||'').replace(/\n/g,'<br>')+'</p>'});
   return h},
- wrapHTML(inner){return '﻿<html><head><meta charset="utf-8"><style>body{font-family:Segoe UI,Arial;color:#1c1530;margin:28px}h1{color:#7C3AED;border-bottom:2px solid #EC4899;padding-bottom:6px}h3{color:#6366F1}table{border-collapse:collapse;width:100%}td,th{border:1px solid #c9bfe0;padding:6px 9px;font-size:12px;text-align:left;vertical-align:top}th{background:#efe7fc}</style></head><body>'+inner+'</body></html>'},
+ wrapHTML(inner){return '<html><head><meta charset="utf-8"><style>body{font-family:Segoe UI,Arial;color:#1c1530;margin:28px}h1{color:#7C3AED;border-bottom:2px solid #EC4899;padding-bottom:6px}h3{color:#6366F1}table{border-collapse:collapse;width:100%}td,th{border:1px solid #c9bfe0;padding:6px 9px;font-size:12px;text-align:left;vertical-align:top}th{background:#efe7fc}</style></head><body>'+inner+'</body></html>'}
+};
+</script>
+<script>
+'use strict';
+/* ================= ARIA MAX — EXECUTIVE AI INTENT ENGINE & ALARM SCHEDULER ================= */
+
+window.ExecutiveEngine = {
+  async processIntent(rawText){
+    if(typeof SET !== 'undefined' && SET.aiActionsEnabled === false) return null;
+    if(!rawText || typeof rawText !== 'string') return null;
+    const text = rawText.trim();
+    const low = text.toLowerCase();
+    
+    // 1. Task Creation
+    let m = low.match(/(?:add|create|new)?\s*task[:\s]+(.+)/i) || low.match(/^task[:\s]+(.+)/i);
+    if(m){
+      const rawTitle = m[1];
+      const title = (typeof cleanTitle === 'function' ? cleanTitle(rawTitle) : rawTitle) || rawTitle;
+      const dueInfo = typeof parseWhen === 'function' ? parseWhen(rawTitle) : {};
+      const prio = typeof parsePri === 'function' ? parsePri(rawTitle) : 'normal';
+      const taskObj = { id: uid(), title, due: dueInfo.date || todayStr(), time: dueInfo.time || '', priority: prio, done: false, created: Date.now() };
+      await DB.put('tasks', taskObj);
+      if(typeof renderTasks === 'function' && typeof CUR !== 'undefined' && CUR === 'tasks') renderTasks();
+      return `✅ Executive Action: Added task "${title}" (Due: ${dueInfo.date || 'Today'})`;
+    }
+    
+    // 2. Meeting / Calendar Event
+    m = low.match(/(?:book|schedule|add|new)\s*(?:a\s*)?meeting[:\s]+(.+)/i) || low.match(/^meeting[:\s]+(.+)/i);
+    if(m){
+      const rawTitle = m[1];
+      const title = (typeof cleanTitle === 'function' ? cleanTitle(rawTitle) : rawTitle) || rawTitle;
+      const dueInfo = typeof parseWhen === 'function' ? parseWhen(rawTitle) : {};
+      const evObj = { id: uid(), title, date: dueInfo.date || todayStr(), time: dueInfo.time || '10:00', created: Date.now() };
+      await DB.put('events', evObj);
+      if(typeof renderCal === 'function' && typeof CUR !== 'undefined' && CUR === 'cal') renderCal();
+      return `📅 Executive Action: Scheduled meeting "${title}" on ${dueInfo.date || todayStr()}`;
+    }
+    
+    // 3. Reminder
+    m = low.match(/(?:remind me to|set reminder for|remind)\s+(.+)/i);
+    if(m){
+      const rawTitle = m[1];
+      const dueInfo = typeof parseWhen === 'function' ? parseWhen(rawTitle) : {};
+      const remDate = dueInfo.date || todayStr();
+      const remTime = dueInfo.time || '09:00';
+      const remObj = { id: uid(), text: rawTitle, date: remDate, time: remTime, done: false, created: Date.now() };
+      await DB.put('reminders', remObj);
+      if(typeof SchedulerEngine !== 'undefined') SchedulerEngine.check();
+      return `⏰ Executive Action: Reminder set for "${rawTitle}" at ${remTime}`;
+    }
+    
+    // 4. Money (Expense / Income)
+    m = low.match(/(?:spent|expense|செலவு)\s+₹?(\d+(?:\.\d+)?)(?:\s+(?:on|for)\s+(.+))?/i);
+    if(m){
+      const amt = parseFloat(m[1]);
+      const catStr = (m[2] || 'Other').trim();
+      const mcats = typeof MCATS !== 'undefined' ? MCATS : ['🍲 Food','🚗 Travel','🔬 Lab/R&D','🏢 Office','👨‍👩‍👧 Family','🏥 Health','🎁 Gifts','📦 Other'];
+      const cat = mcats.find(c => c.toLowerCase().includes(catStr.toLowerCase())) || '📦 Other';
+      await DB.put('money', { id: uid(), amt, type: 'expense', cat, date: todayStr(), note: catStr, created: Date.now() });
+      if(typeof renderMoney === 'function' && typeof CUR !== 'undefined' && CUR === 'money') renderMoney();
+      return `💰 Executive Action: Logged Expense ₹${amt.toLocaleString()} (${cat})`;
+    }
+    m = low.match(/(?:earned|income|received|வருமானம்)\s+₹?(\d+(?:\.\d+)?)(?:\s+(?:from|for)\s+(.+))?/i);
+    if(m){
+      const amt = parseFloat(m[1]);
+      const srcStr = (m[2] || 'Salary').trim();
+      await DB.put('money', { id: uid(), amt, type: 'income', cat: '💰 Income', date: todayStr(), note: srcStr, created: Date.now() });
+      if(typeof renderMoney === 'function' && typeof CUR !== 'undefined' && CUR === 'money') renderMoney();
+      return `🟢 Executive Action: Logged Income ₹${amt.toLocaleString()} (${srcStr})`;
+    }
+    
+    // 5. Note
+    m = low.match(/(?:save note|add note|note[:\s])\s*(.+)/i);
+    if(m){
+      const body = m[1];
+      const title = body.slice(0, 30) + (body.length > 30 ? '...' : '');
+      await DB.put('notes', { id: uid(), title, body, created: Date.now() });
+      if(typeof renderNotes === 'function' && typeof CUR !== 'undefined' && CUR === 'notes') renderNotes();
+      return `📝 Executive Action: Saved note "${title}"`;
+    }
+    
+    return null;
+  }
+};
+
+/* Real-Time Alarm & Notification Scheduler */
+window.SchedulerEngine = {
+  notified: new Set(),
+  async check(){
+    try {
+      const now = new Date();
+      const td = todayStr();
+      const curTime = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+      
+      // 1. Tasks due now
+      const tasks = await DB.all('tasks');
+      tasks.filter(t => !t.done && t.due === td && t.time === curTime).forEach(t => this.trigger(t.id, 'Task Due: ' + t.title, 'Scheduled task is due now!'));
+      
+      // 2. Events starting now
+      const events = await DB.all('events');
+      events.filter(e => e.date === td && e.time === curTime).forEach(e => this.trigger(e.id, 'Meeting: ' + e.title, 'Meeting starting at ' + curTime));
+      
+      // 3. Reminders
+      const reminders = await DB.all('reminders');
+      reminders.filter(r => !r.done && r.date === td && r.time === curTime).forEach(r => this.trigger(r.id, 'Reminder: ' + (r.text||r.title), 'Executive Reminder Alert'));
+    } catch(e){}
+  },
+  trigger(id, title, body){
+    const key = id + '_' + todayStr() + '_' + new Date().getMinutes();
+    if(this.notified.has(key)) return;
+    this.notified.add(key);
+    
+    if(typeof playSound === 'function') playSound('alert');
+    if(typeof speak === 'function') speak(title);
+    
+    if('Notification' in window && Notification.permission === 'granted'){
+      try{ new Notification(title, { body, icon: 'icon.svg' }); }catch(x){}
+    } else if('Notification' in window && Notification.permission !== 'denied'){
+      try{ Notification.requestPermission(); }catch(x){}
+    }
+    
+    const banner = document.createElement('div');
+    banner.className = 'vBanner';
+    banner.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:999;background:var(--solid);border:2px solid var(--acc);border-radius:18px;padding:14px 20px;box-shadow:0 10px 40px -10px var(--acc);display:flex;flex-direction:column;gap:8px;max-width:90vw;width:420px;';
+    banner.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <b style="color:var(--acc);font-size:15px">🔔 ${esc(title)}</b>
+        <small class="dim">${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>
+      </div>
+      <p style="font-size:13px;color:var(--text);margin:0">${esc(body)}</p>
+      <div style="display:flex;gap:8px;margin-top:6px;justify-content:flex-end">
+        <button class="btn sm pri" id="almDone_${id}">✅ Mark Finished</button>
+        <button class="btn sm ghost" id="almClose_${id}">Dismiss</button>
+      </div>
+    `;
+    document.body.appendChild(banner);
+    
+    const doneBtn = document.getElementById(`almDone_${id}`);
+    if(doneBtn) doneBtn.onclick = async () => {
+      try {
+        const t = await DB.get('tasks', id);
+        if(t){ t.done = true; await DB.put('tasks', t); }
+        const r = await DB.get('reminders', id);
+        if(r){ r.done = true; await DB.put('reminders', r); }
+        if(typeof go === 'function' && typeof CUR !== 'undefined') go(CUR);
+      } catch(x){}
+      banner.remove();
+    };
+    const closeBtn = document.getElementById(`almClose_${id}`);
+    if(closeBtn) closeBtn.onclick = () => banner.remove();
+  }
+};
+setInterval(() => SchedulerEngine.check(), 2500);
+
+/* Universal Draggable Floating Buttons (#fab '+' and #vfab '🎧' headphone button) */
+(function initDraggableButtons(){
+  function makeDraggable(id, storageKey){
+    const el = document.getElementById(id);
+    if(!el || el.dataset.draggableBound) return;
+    el.dataset.draggableBound = "true";
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if(saved){
+        const pos = JSON.parse(saved);
+        if(pos.left != null && pos.top != null){
+          el.style.right = 'auto'; el.style.bottom = 'auto';
+          el.style.left = Math.max(10, Math.min(window.innerWidth - 60, pos.left)) + 'px';
+          el.style.top = Math.max(10, Math.min(window.innerHeight - 60, pos.top)) + 'px';
+        }
+      }
+    } catch(e){}
+    let dragging = false, startX = 0, startY = 0, initialLeft = 0, initialTop = 0, moved = false;
+    function onStart(e){
+      const touch = e.touches ? e.touches[0] : e;
+      dragging = true; moved = false;
+      startX = touch.clientX; startY = touch.clientY;
+      const rect = el.getBoundingClientRect();
+      initialLeft = rect.left; initialTop = rect.top;
+      el.style.transition = 'none';
+    }
+    function onMove(e){
+      if(!dragging) return;
+      const touch = e.touches ? e.touches[0] : e;
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if(Math.hypot(dx, dy) > 5) moved = true;
+      if(moved){
+        let newLeft = Math.max(10, Math.min(window.innerWidth - el.offsetWidth - 10, initialLeft + dx));
+        let newTop = Math.max(10, Math.min(window.innerHeight - el.offsetHeight - 10, initialTop + dy));
+        el.style.right = 'auto'; el.style.bottom = 'auto';
+        el.style.left = newLeft + 'px'; el.style.top = newTop + 'px';
+      }
+    }
+    function onEnd(e){
+      if(!dragging) return;
+      dragging = false;
+      el.style.transition = '';
+      const rect = el.getBoundingClientRect();
+      if(moved){
+        try{ localStorage.setItem(storageKey, JSON.stringify({left: rect.left, top: rect.top})); }catch(x){}
+      }
+    }
+    el.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+    el.addEventListener('touchstart', onStart, {passive: true});
+    window.addEventListener('touchmove', onMove, {passive: true});
+    window.addEventListener('touchend', onEnd);
+    el.addEventListener('click', (e)=>{ if(moved){ e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  }
+  function setupAll(){
+    makeDraggable('fab', 'aria_fab_pos');
+    makeDraggable('vfab', 'aria_vfab_pos');
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupAll);
+  else setupAll();
+  setInterval(setupAll, 1000);
+})();
+
+/* Hook ExecutiveEngine into ARIA.handle & brainCmd */
+(function hookExecutiveEngine(){
+  setTimeout(() => {
+    if(typeof brainCmd === 'function'){
+      const _bc = brainCmd;
+      brainCmd = async function(raw){
+        const res = await ExecutiveEngine.processIntent(raw);
+        if(res) return res;
+        return _bc(raw);
+      };
+    }
+  }, 1000);
+})();
+</script>
+</body>
+</html>'},
  doc(d){this.dl(new Blob([this.wrapHTML(this.tableHTML(d))],{type:'application/msword'}),this.fname(d,'doc'))},
  xls(d){this.dl(new Blob([this.wrapHTML(this.tableHTML(d))],{type:'application/vnd.ms-excel'}),this.fname(d,'xls'))},
  pdf(d){try{if(window.jspdf&&window.jspdf.jsPDF){
@@ -4724,19 +5031,59 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-exp]');
     if(sec1&&!$('#view [data-exp]'))sec1.insertAdjacentHTML('beforeend',exportBtn('ins'))};
 })();
 /* navigation: full map incl. Health */
-go=async function(v){if(CUR==='graph'&&v!=='graph')Graph3D.close();
-  CUR=v;
-  $$('.nv').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  $('#crumb').textContent=NAMES[v]||v;
-  $('#sidebar').classList.remove('open');
-  $('#view').classList.toggle('chatmode',v==='chat');
-  const fn={dash:renderDash,chat:renderChat,ins:renderInsights,graph:renderGraph,tasks:renderTasks,cal:renderCal,
-    meet:renderMeet,proj:renderProj,ideas:renderIdeas,notes:renderNotes,people:renderPeople,
-    family:renderFamily,health:renderHealth,files:renderFiles,media:renderMedia,set:renderSettings}[v];
-  if(fn)await fn();
-  $('#view').scrollTop=0;MEDIA.pill();
-  $$('#bnav button').forEach(b=>{if(b.dataset.v)b.classList.toggle('on',b.dataset.v===v)});
-  if(v!=='search')DB.put('kv',{id:'lastView',v}).catch(()=>{})};
+window.go = async function(v){
+  if(typeof CUR !== 'undefined' && CUR === 'graph' && v !== 'graph' && typeof Graph3D !== 'undefined'){
+    try{ Graph3D.close(); }catch(e){}
+  }
+  CUR = v;
+  if(typeof $$ === 'function'){
+    $$('.nv').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    $$('#bnav button').forEach(b => { if(b.dataset.v) b.classList.toggle('on', b.dataset.v === v); });
+  }
+  const crumbEl = document.getElementById('crumb');
+  if(crumbEl && typeof NAMES !== 'undefined') crumbEl.textContent = NAMES[v] || v;
+  const sidebar = document.getElementById('sidebar');
+  if(sidebar) sidebar.classList.remove('open');
+  const viewEl = document.getElementById('view');
+  if(viewEl) viewEl.classList.toggle('chatmode', v === 'chat');
+  
+  const fnMap = {
+    dash: typeof renderDash === 'function' ? renderDash : null,
+    chat: typeof renderChat === 'function' ? renderChat : null,
+    ins: typeof renderInsights === 'function' ? renderInsights : null,
+    graph: typeof renderGraph === 'function' ? renderGraph : null,
+    tasks: typeof renderTasks === 'function' ? renderTasks : null,
+    cal: typeof renderCal === 'function' ? renderCal : null,
+    meet: typeof renderMeet === 'function' ? renderMeet : null,
+    proj: typeof renderProj === 'function' ? renderProj : null,
+    ideas: typeof renderIdeas === 'function' ? renderIdeas : null,
+    notes: typeof renderNotes === 'function' ? renderNotes : null,
+    people: typeof renderPeople === 'function' ? renderPeople : null,
+    family: typeof renderFamily === 'function' ? renderFamily : null,
+    health: typeof renderHealth === 'function' ? renderHealth : null,
+    files: typeof renderFiles === 'function' ? renderFiles : null,
+    media: typeof renderMedia === 'function' ? renderMedia : null,
+    rec: typeof renderRec === 'function' ? renderRec : null,
+    keeps: typeof renderKeeps === 'function' ? renderKeeps : null,
+    goals: typeof renderGoals === 'function' ? renderGoals : null,
+    money: typeof renderMoney === 'function' ? renderMoney : null,
+    journal: typeof renderJournal === 'function' ? renderJournal : null,
+    set: typeof renderSettings === 'function' ? renderSettings : null
+  };
+  
+  const targetFn = fnMap[v] || (typeof window['render' + v.charAt(0).toUpperCase() + v.slice(1)] === 'function' ? window['render' + v.charAt(0).toUpperCase() + v.slice(1)] : null);
+  if(targetFn){
+    await targetFn();
+  } else {
+    console.warn('No render function found for view:', v);
+  }
+  if(viewEl) viewEl.scrollTop = 0;
+  if(typeof MEDIA !== 'undefined' && MEDIA.pill) MEDIA.pill();
+  if(v !== 'search' && typeof DB !== 'undefined' && DB.put){
+    DB.put('kv', { id: 'lastView', v }).catch(() => {});
+  }
+};
+go = window.go;
 </script>
 
 <script>
@@ -5058,7 +5405,7 @@ NAMES.rec='Recorder';NAMES.keeps='Keeps';NAMES.goals='Goals';NAMES.money='Money'
 const REC2={on:false,t0:0,timer:null,sr:null,txt:''};
 async function renderRec(){
   const recs=(await DB.all('media')).filter(m=>m.kind==='rec').sort((a,b)=>(b.created||0)-(a.created||0));
-  const LANGS=[['en','English'],['ta','தமிழ் Tamil'],['hi','हिन्दी Hindi'],['zh','中文 Chinese'],['ja','日本語 Japanese'],['fr','Français'],['de','Deutsch'],['es','Español']];
+  const LANGS=[['en','English'],['ta','தமிழ் Tamil'],['hi','हिन्दी Hindi'],['zh','🇨🇳 中文 Chinese (Simplified)'],['zh-TW','🇹🇼 繁體中文 Traditional Chinese (Taiwan)'],['ja','日本語 Japanese'],['fr','Français'],['de','Deutsch'],['es','Español']];
   $('#view').innerHTML=`
   <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
     <div class="card"><div class="sec">🔴 Record meeting / voice note</div>
@@ -5075,7 +5422,7 @@ async function renderRec(){
       <div class="srItem" style="cursor:default;min-height:52px;font-size:12.5px" id="trOut"><span class="dim">Needs any AI key (free Gemini/Groq work). Offline recording always works; translation needs internet.</span></div>
     </div>
   </div>
-  <div class="card" style="margin-top:13px"><div class="filterRow" style="margin:0"><div class="sec" style="margin:0">🎙 Recordings (${recs.length})</div>${exportBtn('files')}</div>
+  <div class="card" style="margin-top:13px"><div class="filterRow" style="margin:0"><div class="sec" style="margin:0">🎙 Recordings (${recs.length})</div>${typeof exportBtn === 'function' ? exportBtn('files') : ''}</div>
     ${recs.length?recs.map(r=>`<div class="evItem">
       <span style="font-size:18px">🎙</span>
       <div style="flex:1;min-width:0"><div style="font-size:13px">${esc(r.name)}</div>
@@ -5114,7 +5461,7 @@ async function renderRec(){
   $('#trGo').onclick=async()=>{
     if(SET.provider==='offline'&&!sttEngine())return $('#trOut').textContent='Add any AI key (free Gemini/Groq) in Settings to translate.';
     $('#trOut').textContent='🎙 Listening…';
-    const saved=SET.lang;SET.lang={en:'en-US',ta:'ta-IN',hi:'hi-IN',zh:'zh-CN',ja:'ja-JP',fr:'fr-FR',de:'de-DE',es:'es-ES'}[$('#trFrom').value]||'en-US';
+    const saved=SET.lang;SET.lang={en:'en-US',ta:'ta-IN',hi:'hi-IN',zh:'zh-CN','zh-TW':'zh-TW',ja:'ja-JP',fr:'fr-FR',de:'de-DE',es:'es-ES'}[$('#trFrom').value]||'en-US';
     let heard=await listenOnce();
     if(!heard&&sttEngine()){try{const b=await recordAudio({untilSilence:true,maxMs:12000});heard=await transcribe(b)}catch(e){}}
     SET.lang=saved;
@@ -5123,7 +5470,7 @@ async function renderRec(){
     try{const toName=$('#trTo option:checked').textContent;
       const out=await callAI('Translate to '+toName+'. Reply with ONLY the translation, nothing else:\n'+heard);
       $('#trOut').textContent='“'+heard+'”\n→ '+out;
-      const saved2=SET.lang;SET.lang={en:'en-US',ta:'ta-IN',hi:'hi-IN',zh:'zh-CN',ja:'ja-JP',fr:'fr-FR',de:'de-DE',es:'es-ES'}[$('#trTo').value];
+      const saved2=SET.lang;SET.lang={en:'en-US',ta:'ta-IN',hi:'hi-IN',zh:'zh-CN','zh-TW':'zh-TW',ja:'ja-JP',fr:'fr-FR',de:'de-DE',es:'es-ES'}[$('#trTo').value];
       await speakAsync(out);SET.lang=saved2}
     catch(e){$('#trOut').textContent='❌ '+(e.message||e)}};
   $$('[data-rp]').forEach(b=>b.onclick=async()=>{const m=await DB.get('media',b.dataset.rp);
@@ -5160,7 +5507,7 @@ async function renderKeeps(){
   $('#view').innerHTML=`
   <div class="filterRow">
     ${['All',...KEEP_CATS].map(c=>`<button class="kChip ${F.cat===c?'on':''}" data-kc="${c}">${c}</button>`).join('')}
-    <button class="btn pri sm" id="keepAdd" style="margin-left:auto">＋ New keep</button>${exportBtn('keeps')}
+    <button class="btn pri sm" id="keepAdd" style="margin-left:auto">＋ New keep</button>${typeof exportBtn === 'function' ? exportBtn('keeps') : ''}
   </div>
   <p class="dim" style="font-size:12px;margin-bottom:10px">⭐ Your most important notes &amp; documents, categorized — star any file in the Files Vault to send it here.</p>
   <div class="grid2">${items.length?items.map(i=>`
@@ -5206,7 +5553,7 @@ async function renderKeeps(){
 async function renderGoals(){
   const gs=(await DB.all('goals')).sort((a,b)=>(b.up||0)-(a.up||0));
   $('#view').innerHTML=`
-  <div class="filterRow"><button class="btn pri sm" id="gAdd" style="margin-left:auto">＋ New objective</button>${exportBtn('goals')}</div>
+  <div class="filterRow"><button class="btn pri sm" id="gAdd" style="margin-left:auto">＋ New objective</button>${typeof exportBtn === 'function' ? exportBtn('goals') : ''}</div>
   <div class="grid2">${gs.length?gs.map(g=>{const kr=g.krs||[],done=kr.filter(k=>k.done).length;
     const pct=kr.length?Math.round(done/kr.length*100):(g.progress||0);
     return`<div class="pCard" data-g="${g.id}">
@@ -5248,7 +5595,7 @@ async function renderMoney(){
   const tot=month.reduce((a,m)=>a+(+m.amt||0),0);
   const byCat={};month.forEach(m=>byCat[m.cat||'📦 Other']=(byCat[m.cat||'📦 Other']||0)+(+m.amt||0));
   $('#view').innerHTML=`
-  <div class="card"><div class="filterRow" style="margin:0"><div class="sec" style="margin:0">💰 Quick expense</div>${exportBtn('money')}</div>
+  <div class="card"><div class="filterRow" style="margin:0"><div class="sec" style="margin:0">💰 Quick expense</div>${typeof exportBtn === 'function' ? exportBtn('money') : ''}</div>
     <div class="hRow" style="margin-top:10px">
       <div><label class="lbl">Amount ₹</label><input id="m_amt" type="number" placeholder="500"></div>
       <div><label class="lbl">Category</label><select id="m_cat">${MCATS.map(c=>`<option>${c}</option>`).join('')}</select></div>
@@ -5288,7 +5635,7 @@ async function renderJournal(){
   let streak=0;for(let i=0;;i++){if(js.find(j=>j.date===addD(todayStr(),-i)))streak++;else break}
   const MOODS=['😞','😐','🙂','😊','🤩'];
   $('#view').innerHTML=`
-  <div class="card"><div class="filterRow" style="margin:0"><div class="sec" style="margin:0">📔 Today — ${fmtD(todayStr())}</div>${exportBtn('journal')}</div>
+  <div class="card"><div class="filterRow" style="margin:0"><div class="sec" style="margin:0">📔 Today — ${fmtD(todayStr())}</div>${typeof exportBtn === 'function' ? exportBtn('journal') : ''}</div>
     <label class="lbl">Mood</label>
     <div>${MOODS.map((m,i)=>`<button class="moodBtn ${today.mood===i+1?'on':''}" data-md="${i+1}">${m}</button>`).join('')}</div>
     <label class="lbl">What happened / thoughts</label><textarea id="j_txt" style="min-height:100px">${esc(today.text||'')}</textarea>
@@ -5666,21 +6013,59 @@ const Ambient={cur:null,g:null,name:null,
     return _col(sec)}})();
 
 /* ---- final navigation + boot ---- */
-go=async function(v){if(CUR==='graph'&&v!=='graph')Graph3D.close();
-  CUR=v;
-  $$('.nv').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  $('#crumb').textContent=NAMES[v]||v;
-  $('#sidebar').classList.remove('open');
-  $('#view').classList.toggle('chatmode',v==='chat');
-  const fn={dash:renderDash,chat:renderChat,ins:renderInsights,graph:renderGraph,tasks:renderTasks,cal:renderCal,
-    meet:renderMeet,proj:renderProj,ideas:renderIdeas,notes:renderNotes,people:renderPeople,
-    family:renderFamily,health:renderHealth,files:renderFiles,media:renderMedia,
-    rec:renderRec,keeps:renderKeeps,goals:renderGoals,money:renderMoney,journal:renderJournal,
-    set:renderSettings}[v];
-  if(fn)await fn();
-  $('#view').scrollTop=0;MEDIA.pill();
-  $$('#bnav button').forEach(b=>{if(b.dataset.v)b.classList.toggle('on',b.dataset.v===v)});
-  if(v!=='search')DB.put('kv',{id:'lastView',v}).catch(()=>{})};
+window.go = async function(v){
+  if(typeof CUR !== 'undefined' && CUR === 'graph' && v !== 'graph' && typeof Graph3D !== 'undefined'){
+    try{ Graph3D.close(); }catch(e){}
+  }
+  CUR = v;
+  if(typeof $$ === 'function'){
+    $$('.nv').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    $$('#bnav button').forEach(b => { if(b.dataset.v) b.classList.toggle('on', b.dataset.v === v); });
+  }
+  const crumbEl = document.getElementById('crumb');
+  if(crumbEl && typeof NAMES !== 'undefined') crumbEl.textContent = NAMES[v] || v;
+  const sidebar = document.getElementById('sidebar');
+  if(sidebar) sidebar.classList.remove('open');
+  const viewEl = document.getElementById('view');
+  if(viewEl) viewEl.classList.toggle('chatmode', v === 'chat');
+  
+  const fnMap = {
+    dash: typeof renderDash === 'function' ? renderDash : null,
+    chat: typeof renderChat === 'function' ? renderChat : null,
+    ins: typeof renderInsights === 'function' ? renderInsights : null,
+    graph: typeof renderGraph === 'function' ? renderGraph : null,
+    tasks: typeof renderTasks === 'function' ? renderTasks : null,
+    cal: typeof renderCal === 'function' ? renderCal : null,
+    meet: typeof renderMeet === 'function' ? renderMeet : null,
+    proj: typeof renderProj === 'function' ? renderProj : null,
+    ideas: typeof renderIdeas === 'function' ? renderIdeas : null,
+    notes: typeof renderNotes === 'function' ? renderNotes : null,
+    people: typeof renderPeople === 'function' ? renderPeople : null,
+    family: typeof renderFamily === 'function' ? renderFamily : null,
+    health: typeof renderHealth === 'function' ? renderHealth : null,
+    files: typeof renderFiles === 'function' ? renderFiles : null,
+    media: typeof renderMedia === 'function' ? renderMedia : null,
+    rec: typeof renderRec === 'function' ? renderRec : null,
+    keeps: typeof renderKeeps === 'function' ? renderKeeps : null,
+    goals: typeof renderGoals === 'function' ? renderGoals : null,
+    money: typeof renderMoney === 'function' ? renderMoney : null,
+    journal: typeof renderJournal === 'function' ? renderJournal : null,
+    set: typeof renderSettings === 'function' ? renderSettings : null
+  };
+  
+  const targetFn = fnMap[v] || (typeof window['render' + v.charAt(0).toUpperCase() + v.slice(1)] === 'function' ? window['render' + v.charAt(0).toUpperCase() + v.slice(1)] : null);
+  if(targetFn){
+    await targetFn();
+  } else {
+    console.warn('No render function found for view:', v);
+  }
+  if(viewEl) viewEl.scrollTop = 0;
+  if(typeof MEDIA !== 'undefined' && MEDIA.pill) MEDIA.pill();
+  if(v !== 'search' && typeof DB !== 'undefined' && DB.put){
+    DB.put('kv', { id: 'lastView', v }).catch(() => {});
+  }
+};
+go = window.go;
 (async function maxBoot(){while(!DB.db)await new Promise(r=>setTimeout(r,80));
   await new Promise(r=>setTimeout(r,700));
   /* overdue family calls — the busy-CEO nudge */
@@ -5704,5 +6089,8 @@ go=async function(v){if(CUR==='graph'&&v!=='graph')Graph3D.close();
       <b>ARIA MAX v6</b> · ${THEMES.length} themes · ${CINE_SCENES.length} cinematic scenes · ${CHARS.length} avatars · ${PERSONAS.length} voices · ${Object.keys(SOUND_LIB).length} alert tones · ${STORES.length} data stores · 100% local</p>
     </div>`)}})();
 </script>
+
+
 </body>
+
 </html>
